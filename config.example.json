@@ -1,0 +1,39 @@
+{
+  "bot": {
+    "username": "AFKBot",
+    "host": "example.aternos.me",
+    "port": 19132,
+    "version": "1.26.30",
+    "offline": true,
+    "connectTimeoutMs": 9000,
+    "viewDistance": 4,
+    "raknetBackend": "jsp-raknet"
+  },
+  "reconnect": {
+    "enabled": true,
+    "baseDelayMs": 5000,
+    "maxDelayMs": 300000,
+    "maxAttempts": 0,
+    "jitterMs": 1000
+  },
+  "antiAfk": {
+    "enabled": true,
+    "mode": "rotate",
+    "intervalMs": 15000,
+    "walkRadius": 0.5
+  },
+  "chatHeartbeat": {
+    "enabled": false,
+    "intervalMs": 600000,
+    "message": "AFK bot keep-alive active."
+  },
+  "logging": {
+    "level": "info",
+    "format": "text"
+  },
+  "health": {
+    "enabled": false,
+    "port": 3000,
+    "path": "/health"
+  }
+}

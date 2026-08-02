@@ -1,0 +1,31 @@
+{
+  "name": "bedrock-afk-bot",
+  "version": "2.0.0",
+  "description": "Production-ready Minecraft Bedrock/MCPE AFK keep-alive bot for Aternos and other Bedrock servers, built for low-cost Node.js hosting.",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js",
+    "validate-config": "node -e \"require('./src/config').loadConfig(); console.log('Config OK')\""
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "minecraft",
+    "bedrock",
+    "mcpe",
+    "afk-bot",
+    "aternos",
+    "bedrock-protocol"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "bedrock-protocol": "^3.56.1",
+    "dotenv": "^17.4.2"
+  },
+  "overrides": {
+    "raknet-native": "npm:jsp-raknet@^2.1.3"
+  }
+}
