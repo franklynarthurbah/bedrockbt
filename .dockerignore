@@ -1,0 +1,29 @@
+# Dependencies are installed fresh inside the image (see Dockerfile) - never
+# copy a host node_modules in, it can contain platform-specific native
+# binaries that don't match the container's architecture/libc.
+node_modules
+
+# Secrets and local overrides - never bake these into an image or layer cache.
+.env
+.env.*
+!.env.example
+config.json
+
+# Logs and OS/editor cruft.
+npm-debug.log*
+*.log
+.DS_Store
+Thumbs.db
+.vscode
+.idea
+
+# Version control.
+.git
+.gitignore
+
+# Not needed at runtime; keeps the build context small.
+Dockerfile
+.dockerignore
+README.md
+LICENSE
+*.md

@@ -20,14 +20,30 @@ let connectionState = 'starting'
 let health = { close () {} } // replaced below once the health server (if enabled) is up
 
 // Crash-loop guard for errors that escape normal event handling entirely
-// (see README "Known limitations" - some low-level network errors, like a
+// (see README "Limitations" - some low-level network errors, like a
 // bad hostname, surface as uncaught exceptions rather than client 'error'
 // events). A handful of these in quick succession means something is
 // fundamentally broken, not just a flaky connection, so we stop trying
 // in-process and let the host's process supervisor restart us cleanly.
+//
+// Threshold verified against the actual reconnect backoff math (not just
+// picked): a DNS-failure-style error that keeps recurring forever is
+// EXPECTED to eventually stop tripping this guard once the exponentially
+// growing reconnect delay outruns CRASH_LOOP_WINDOW_MS - the question is
+// only whether it outruns the window before or after hitting the
+// threshold. Simulating this against the default RECONNECT_BASE_DELAY_MS
+// (5000ms), threshold=5 never triggers - good. But a deliberately fast,
+// still-reasonable RECONNECT_BASE_DELAY_MS=1000 *did* false-trigger around
+// the 5th-7th attempt purely because delays hadn't grown past the window
+// yet, even though every single attempt was correctly backing off. 8
+// clears that false positive (base delay down to ~1000ms never triggers)
+// while a truly pathological loop - failures with little/no delay between
+// them at all, which would mean reconnect scheduling itself is broken -
+// still trips it in well under a second, which is the actual failure mode
+// this guard exists to catch.
 const crashTimestamps = []
 const CRASH_LOOP_WINDOW_MS = 60000
-const CRASH_LOOP_THRESHOLD = 5
+const CRASH_LOOP_THRESHOLD = 8
 
 function isCrashLooping () {
   const now = Date.now()

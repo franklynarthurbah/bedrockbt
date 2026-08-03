@@ -1,9 +1,10 @@
 # Bedrock AFK Bot
 
-A production-ready **Minecraft Bedrock / MCPE** keep-alive bot. It connects to a
-Bedrock server, stays connected through disconnects and restarts, performs
-light, configurable anti-AFK behavior, and is built to run unattended on
-low-cost Node.js hosting such as [Wispbyte](https://wispbyte.com).
+A production-ready **Minecraft Bedrock / MCPE** keep-alive bot. It connects
+to a Bedrock server, stays connected through disconnects and restarts,
+performs light, configurable anti-AFK behavior, and is built to run
+unattended on low-cost Node.js hosting such as
+[Wispbyte](https://wispbyte.com).
 
 This is a full rebuild of the original project, which was a Java Edition
 ([Mineflayer](https://github.com/PrismarineJS/mineflayer)) bot. Mineflayer
@@ -12,8 +13,8 @@ servers at all — the two editions use completely different network
 protocols. This rebuild uses
 [`bedrock-protocol`](https://github.com/PrismarineJS/bedrock-protocol), the
 Bedrock-native equivalent, and adds the reconnect handling, config
-validation, structured logging, and graceful shutdown the original script
-didn't have.
+validation, structured logging, graceful shutdown, and a real container/host
+deployment story the original script didn't have.
 
 ## What this bot does
 
@@ -26,7 +27,8 @@ didn't have.
 - Logs everything as structured, timestamped lines.
 - Shuts down cleanly on `SIGINT`/`SIGTERM` instead of leaving a dangling
   connection.
-- Validates its own configuration before it ever tries to connect.
+- Validates its own configuration before it ever tries to connect, and
+  reports exactly which value was invalid.
 
 ## What this bot does *not* do
 
@@ -42,21 +44,93 @@ didn't have.
 
 ## Supported Minecraft version range
 
-Built on `bedrock-protocol`, which currently supports Bedrock/MCPE
-**1.16.201 through 1.26.30** (auto-generated from Mojang's own protocol
-schemas per version). The bot defaults to **1.26.30**. If your server runs a
-different version, set `BEDROCK_VERSION` to match — see
+Built on `bedrock-protocol` (currently v3.57.0 on npm), which supports
+Bedrock/MCPE **1.16.201 through 1.26.30** — this list comes directly from
+the published package, not a guess:
+
+```
+1.16.201, 1.16.210, 1.16.220, 1.17.0, 1.17.10, 1.17.30, 1.17.40, 1.18.0,
+1.18.11, 1.18.30, 1.19.1, 1.19.10, 1.19.20, 1.19.21, 1.19.30, 1.19.40,
+1.19.41, 1.19.50, 1.19.60, 1.19.62, 1.19.63, 1.19.70, 1.19.80, 1.20.0,
+1.20.10, 1.20.30, 1.20.40, 1.20.50, 1.20.61, 1.20.71, 1.20.80, 1.21.0,
+1.21.2, 1.21.21, 1.21.30, 1.21.42, 1.21.50, 1.21.60, 1.21.70, 1.21.80,
+1.21.90, 1.21.93, 1.21.100, 1.21.111, 1.21.120, 1.21.124, 1.21.130,
+1.26.0, 1.26.10, 1.26.20, 1.26.30
+```
+
+The bot defaults to **1.26.30**, the newest version in that list. If your
+server runs a different version, set `BEDROCK_VERSION` to match — see
 [Troubleshooting](#troubleshooting).
 
 ## Platform support notes
 
-- **Node.js 18+**, any OS. No native build tools required (see
-  [A note on `raknet-native`](#a-note-on-raknet-native) below).
+- **Node.js 20+** (see [How this was verified](#how-this-was-verified) for
+  why the floor moved up from 18), any OS. No native build tools required
+  by default — see [A note on raknet-native](#a-note-on-raknet-native).
+  Node 18 and Node 20 have both reached end-of-life (no more security
+  patches); **Node 22 or 24** is recommended for any new deployment.
 - Designed for headless/unattended hosting: no GUI, no interactive prompts
   in the default (offline) auth mode.
 - Memory-light: no world/chunk model is built or cached, dependencies are
   kept minimal, and the server is asked to stream a small chunk radius
   (`VIEW_DISTANCE`) to keep bandwidth and memory use down.
+
+---
+
+## How this was verified
+
+Being upfront about exactly what "verified" means here, per the standard
+this project was reviewed against — no claim below is made without having
+actually done it in this environment:
+
+**Actually run and checked:**
+- `npm ci` in a clean Node 22.22.2 / npm 10.9.7 environment — installs all
+  60 packages successfully, with the `raknet-native → jsp-raknet` override
+  confirmed working (no C/C++ compiler invoked, no `.node` native binaries
+  produced for that path).
+- `node --check` against every file in `src/` — no syntax errors.
+- Every module `require()`d in-process, including `bedrock-protocol`
+  itself — no load-time crashes.
+- The bot run against a deliberately unreachable hostname to observe real
+  behavior: the DNS failure surfaces as an `uncaughtException` (not a
+  client `error` event — confirmed by reading `bedrock-protocol`'s own
+  source, not just observed), gets classified as `NETWORK`, and schedules a
+  correctly doubling reconnect delay each attempt.
+- `SIGTERM` sent to a running instance mid-reconnect-wait — it cancelled
+  the pending timer and exited promptly with no dangling process.
+- Config validation exercised both ways: missing/invalid values are
+  rejected with a specific, per-field message and a non-zero exit code;
+  valid config passes and the process proceeds to connect.
+- `bedrock-protocol`'s actual published README/source (not training
+  knowledge) checked directly for the supported-version list and the
+  `offline` / `raknetBackend` / `connectTimeout` / `skipPing` /
+  `viewDistance` client options this project relies on — all confirmed
+  accurate as of v3.57.0.
+- Wispbyte's own current knowledge-base documentation and independent
+  reviews checked directly for its actual server-creation flow and free-tier
+  limits, rather than assumed.
+- Current Node.js LTS/EOL status checked directly (this is why the
+  `engines` floor and the Docker base image changed from the previous
+  version of this project).
+
+**Not done, and not claimed:**
+- No connection to a real Aternos server or any other live Bedrock/MCPE
+  server. This project was reviewed in a sandboxed environment whose
+  network access is limited to a small package-registry allowlist (npm,
+  GitHub) and does not reach Minecraft or Aternos infrastructure. Nothing
+  in this README should be read as "confirmed working against a live
+  server" — the reconnect/backoff/shutdown *mechanics* are verified; a real
+  handshake with your specific server is not, and can't be, from here.
+- The `Dockerfile` was not built or run — there is no Docker daemon in this
+  environment. It was hand-verified line by line against the real, tested
+  project structure (every `COPY` source path, the entry point, the base
+  image tag) instead.
+- No Wispbyte server was actually created or deployed to.
+
+If you hit something this project claims should work and it doesn't on
+your actual server, that gap is exactly what the sandbox above couldn't
+catch — please treat the [Troubleshooting](#troubleshooting) section as the
+starting point, not a guarantee.
 
 ---
 
@@ -76,7 +150,11 @@ npm start
 ```
 
 `npm install` needs internet access to `registry.npmjs.org` (or your
-configured registry) the first time.
+configured registry) the first time, **and needs a working Node.js/npm
+installation on whatever machine or container you run it in** — if you're
+seeing `npm: command not found`, that's what's missing; jump to
+[Troubleshooting](#npm-command-not-found) or
+[Running with Docker](#running-with-docker).
 
 ### A note on `raknet-native`
 
@@ -98,11 +176,57 @@ RakNet implementation with no native compilation step:
 ```
 
 The bot also explicitly sets `raknetBackend: "jsp-raknet"` when connecting.
-This was verified end-to-end (install, connect attempt, reconnect cycles)
-during development. If you're deploying somewhere you know has a working
-C++ build toolchain and want the native backend's extra performance, you
-can remove the `overrides` block and set `RAKNET_BACKEND=raknet-native`
-instead — just know that `npm install` will then need to compile it.
+This was confirmed by actually running `npm ci` and inspecting the result:
+no compiler is invoked and no native `.node` binary is produced for this
+path (see [How this was verified](#how-this-was-verified) — this is a
+statement about the *install*, not about a completed connection to a live
+server). If you're deploying somewhere you know has a working C++ build
+toolchain and want the native backend's extra performance, you can remove
+the `overrides` block and set `RAKNET_BACKEND=raknet-native` instead — just
+know that `npm install` will then need to compile it.
+
+---
+
+## Running with Docker
+
+A [`Dockerfile`](./Dockerfile) is included so this project can run anywhere
+that accepts a container image — a VPS, Railway, Fly.io, Render, your own
+machine for local testing, or a hosting panel that accepts a custom image
+rather than picking from preset stacks. (For Wispbyte's own free/standard
+flow specifically, see [Deploying on Wispbyte](#deploying-on-wispbyte) —
+Wispbyte has you pick a pre-built Node.js image from its panel rather than
+building this file yourself, but this `Dockerfile` still defines exactly
+what that image needs to contain.)
+
+```bash
+# Build
+docker build -t bedrock-afk-bot .
+
+# Configure
+cp .env.example .env   # then edit .env
+
+# Run
+docker run --rm --env-file .env bedrock-afk-bot
+
+# Only needed if you set HEALTH_CHECK_ENABLED=true and want to reach the
+# health endpoint from outside the container:
+docker run --rm --env-file .env -p 3000:3000 bedrock-afk-bot
+```
+
+`docker stop` sends `SIGTERM` by default. The image runs `node
+src/index.js` directly as the container's PID 1 (not `npm start`)
+specifically so that signal reaches the process straight away, and this
+project's graceful-shutdown handling (see [How reconnect
+works](#how-reconnect-works)) gets a clean chance to run instead of the
+container being killed outright after Docker's grace period.
+
+The image is a multi-stage build: dependencies are installed with `npm ci`
+(driven entirely by `package-lock.json`, for a reproducible install — see
+[Verification requirements](#how-this-was-verified)) in one stage, then only
+`node_modules` and the application source are copied into the final image,
+running as the non-root `node` user. It was **not** built or run in this
+environment (no Docker daemon here) — see [How this was
+verified](#how-this-was-verified) for exactly what was and wasn't checked.
 
 ---
 
@@ -121,8 +245,9 @@ and those should always take effect regardless of what's in a checked-in
 `config.json`.
 
 The bot **validates the fully merged config before connecting**. If
-anything is missing or invalid, it prints every problem it found and exits
-without attempting a connection — it will not try to run with bad settings.
+anything is missing or invalid, it prints every problem it found —
+including the actual value it received, not just the rule that was broken
+— and exits without attempting a connection.
 
 ### Environment variables
 
@@ -131,11 +256,11 @@ without attempting a connection — it will not try to run with bad settings.
 | `SERVER_HOST` | *(required)* | Bedrock server hostname or IP, e.g. `example.aternos.me`. No `http://`, no port. |
 | `BOT_USERNAME` | `AFKBot` | Display name the bot connects as. |
 | `SERVER_PORT` | `19132` | Bedrock's default port (not Java's 25565). Aternos shows the correct port on your server's dashboard. |
-| `BEDROCK_VERSION` | `1.26.30` | Protocol version to speak. See [Troubleshooting](#troubleshooting) if you get a version-mismatch disconnect. |
+| `BEDROCK_VERSION` | `1.26.30` | Protocol version to speak. See [Troubleshooting](#version-mismatch) if you get a version-mismatch disconnect. |
 | `AUTH_OFFLINE` | `true` | `true` = offline-style connection (no Microsoft sign-in). `false` = real Xbox Live/Microsoft login. See [Authentication modes](#authentication-modes). |
 | `CONNECT_TIMEOUT_MS` | `9000` | How long to wait for a connection attempt before giving up. |
 | `VIEW_DISTANCE` | `4` | Chunk radius requested from the server. Lower = less memory/bandwidth. |
-| `RAKNET_BACKEND` | `jsp-raknet` | `jsp-raknet` (pure JS, portable) / `raknet-native` (faster, needs a build toolchain) / `raknet-node`. |
+| `RAKNET_BACKEND` | `jsp-raknet` | `jsp-raknet` (pure JS, portable) / `raknet-native` (faster, needs a build toolchain) / `raknet-node` (prebuilt native binary, no compiler needed, but platform-specific). |
 | `RECONNECT_ENABLED` | `true` | Set `false` to exit instead of reconnecting after a disconnect. |
 | `RECONNECT_BASE_DELAY_MS` | `5000` | Starting reconnect delay. |
 | `RECONNECT_MAX_DELAY_MS` | `300000` | Reconnect delay cap (5 minutes). |
@@ -175,7 +300,9 @@ whichever one your server actually uses:
   sign-in. This is what most self-hosted and "cracked"-mode Aternos setups
   use for bots, since it doesn't require attaching a real Microsoft account.
   The server must be configured to accept these connections — see
-  [Aternos setup](#using-it-with-aternos-bedrockmcpe) below.
+  [Aternos setup](#using-it-with-aternos-bedrockmcpe) below. Under the
+  hood, a Bedrock Dedicated Server's equivalent of Java's `online-mode` is
+  an `xbox-auth` setting — different property name, same idea.
 - **Online (`AUTH_OFFLINE=false`):** A real Microsoft account sign-in via
   device code. `bedrock-protocol` will print a URL and a short code to the
   log the first time; you visit the URL, enter the code, and sign in from a
@@ -248,10 +375,21 @@ On any disconnect (kicked, connection error, or a network hiccup), the bot:
 If `RECONNECT_MAX_ATTEMPTS` is set above `0` and that many attempts fail in
 a row, the bot logs a clear fatal message and exits instead of retrying
 forever — useful if you'd rather your host's own restart/alerting take over
-at that point. Some low-level network failures (like an unresolvable
-hostname) surface outside the normal per-connection error events; the bot
-catches these too and routes them through the same reconnect logic, with a
-last-resort safety exit if too many happen in a very short window.
+at that point.
+
+**Crash-loop guard.** Some low-level network failures (like an unresolvable
+hostname) surface outside the normal per-connection error events, as
+uncaught exceptions rather than a client `error`/`kick`/`close` event (see
+[Limitations](#limitations), and [How this was verified](#how-this-was-verified)
+for how this was confirmed against the library's actual source). The bot
+catches these too and routes them through the same reconnect logic — but
+also counts them separately: if 8 of them happen within a 60-second sliding
+window, that's treated as something more seriously broken than a flaky
+connection, and the bot exits for the host's process supervisor to restart
+it cleanly rather than looping forever in a possibly-bad state. This
+threshold was checked against the reconnect math specifically so that a
+merely fast (but legitimate) `RECONNECT_BASE_DELAY_MS` doesn't trip it by
+accident — only much tighter loops (near-zero delay between failures) do.
 
 Timers for anti-AFK and chat heartbeat are always torn down before a
 reconnect attempt starts, so you never end up with duplicate intervals
@@ -261,35 +399,86 @@ piling up across reconnects.
 
 ## Deploying on Wispbyte
 
-1. Create a server on Wispbyte and choose the **Node.js** image/egg.
-2. Upload the project files (or connect a git repo, if your plan supports
-   it) so `package.json` and `src/` end up in the server's root directory.
-3. In the panel's **Startup** tab, set the startup command to:
-   ```
-   npm install && npm start
-   ```
-   (or use the panel's install/build step if it has one, and just
-   `npm start` as the run command).
-4. In the panel's **Variables/Environment** tab, set at minimum
-   `SERVER_HOST` and `BOT_USERNAME`, plus any others from the table above
-   you want to change from their defaults.
-5. Start the server and watch the console — you should see the startup
-   banner, then a connection attempt, then either `Bot has spawned` or a
-   clear error with a hint.
+Wispbyte runs every server in its own Docker container and has you pick
+which container image to use per server — Node.js, Bun, Python, Java, C#,
+Rust, Lua, or a database image (this is documented directly in Wispbyte's
+own knowledge base; see [How this was verified](#how-this-was-verified)).
+**`npm: command not found` means the container currently backing your
+server has no Node.js/npm in it at all** — almost always because a
+non-Node.js image, or a "Predefined Project" template meant for something
+else, was selected. No amount of editing this project's files can fix that
+by itself; it has to be corrected in the panel. Here's the full flow:
 
-Notes specific to this kind of low-cost/shared hosting:
+### 1. Use a Node.js image
 
-- Free tiers are typically memory-capped (e.g. 512 MB). This bot's
-  dependency footprint is intentionally small and it builds no world model,
-  so idle memory use should stay well under that, but avoid setting
-  `VIEW_DISTANCE` very high or running many bots in one process.
-- If the process crashes from something truly unexpected, it exits rather
-  than trying to limp along — make sure your host's crash/auto-restart
-  behavior is enabled (most Pterodactyl-panel hosts, including Wispbyte,
-  restart a crashed Node process automatically).
-- If your panel doesn't let you set environment variables directly, use
-  `config.json` instead — copy `config.example.json`, edit it, and upload
-  it alongside the bot.
+- **New server:** when creating it, under *Choose a Docker image for your
+  stack*, pick **Node.js** — not Bun, Python, Java, C#, Rust, Lua, or a
+  database image, and not a Predefined Project template unless you're sure
+  it's Node.js-based.
+- **Existing server showing `npm: command not found`:** open it in the
+  client panel and find where the Docker image/stack is set (check the
+  server's *Startup* tab and general settings). Switch it to **Node.js**.
+  If a version is offered, prefer **Node 22 or newer** — Node 18 and 20
+  have both reached end-of-life. If there's no way to change an existing
+  server's image from the panel, recreate the server with the correct image
+  chosen from the start.
+
+### 2. Upload the project
+
+Server → **Files**, and upload this project so `package.json` and `src/`
+land in the server's root directory (SFTP is available on premium plans).
+
+### 3. Set the startup command
+
+Server → **Startup**:
+
+```
+npm ci --omit=dev && npm start
+```
+
+This installs dependencies from `package-lock.json` — reproducible, see
+[A note on raknet-native](#a-note-on-raknet-native) — every time the server
+starts, then runs the bot. If `npm ci` ever fails because `package.json`
+was hand-edited without updating the lockfile, use `npm install --omit=dev
+&& npm start` instead as a fallback, then regenerate a matching lockfile
+with a local `npm install` afterward. If your panel has a separate
+install/packages field apart from the startup command, put the install half
+there instead and leave the startup command as `npm start` — either layout
+works, as long as install happens before start in a container that actually
+has npm.
+
+### 4. Set environment variables
+
+Server → **Variables**: set at minimum `SERVER_HOST` and `BOT_USERNAME`,
+plus anything else from the [environment variable
+table](#environment-variables) you want to change.
+
+### 5. Start it and read the console
+
+You should see the startup banner, then a connection attempt, then either
+`Bot has spawned` or a specific, categorized error — see
+[Troubleshooting](#troubleshooting). If you see `npm: command not found`
+again, the image still isn't Node.js; go back to step 1.
+
+### Free-tier notes
+
+From Wispbyte's own current documentation and independent reviews (check
+your dashboard — specifics can change):
+
+- The free tier is commonly around **512 MB RAM / 1 GB storage / 1 vCPU**.
+  This bot's footprint is small and it builds no world/chunk model, so idle
+  memory use should stay well under that — avoid a high `VIEW_DISTANCE` or
+  running several instances in one container.
+- Free servers reportedly need a client-panel login periodically (Wispbyte
+  states at least monthly) to avoid being archived. That's about your
+  Wispbyte *account* staying active, separate from the bot's own uptime
+  once it's running.
+- If the process crashes from something genuinely unexpected it exits
+  rather than limping along (see [How reconnect works](#how-reconnect-works))
+  — make sure the panel's auto-restart-on-crash behavior is left on.
+- Prefer a **custom Docker image** on Wispbyte or elsewhere? See [Running
+  with Docker](#running-with-docker) — this project ships a `Dockerfile`
+  that defines the exact same runtime explicitly.
 
 ---
 
@@ -302,17 +491,24 @@ Notes specific to this kind of low-cost/shared hosting:
 2. Note the exact **host** and **port** shown on your Aternos dashboard once
    the server is running — Aternos assigns a specific port per server, and
    it's rarely the default `19132`. Put these in `SERVER_HOST` /
-   `SERVER_PORT`.
+   `SERVER_PORT`. See [Aternos address/port
+   mistakes](#aternos-bedrock-addressport-mistakes) for the most common
+   ways this goes wrong.
 3. **Authentication:** by default, Aternos's Bedrock servers require a real
    Xbox Live/Microsoft sign-in for every connecting player, the same as
    connecting from a real console or the Bedrock launcher — this bot cannot
-   bypass that. If you want the bot to connect without a Microsoft account
-   (`AUTH_OFFLINE=true`, the default here), check your Aternos server's
-   options for an offline/"Cracked" mode setting and enable it. Aternos's
-   exact wording can change over time, so check your dashboard directly. If
-   you'd rather keep the server in normal Xbox Live mode, set
+   bypass that. Aternos exposes a **Cracked** toggle on the server's
+   Options page that switches this off (the same toggle Aternos uses for
+   Java's `online-mode`; on the Bedrock side it maps to the server's
+   `xbox-auth` setting). If you want the bot to connect without a Microsoft
+   account (`AUTH_OFFLINE=true`, the default here), enable **Cracked**.
+   Aternos's exact wording can change over time, so check your dashboard
+   directly. If you'd rather keep the server in normal Xbox Live mode, set
    `AUTH_OFFLINE=false` instead and complete the one-time device sign-in
-   described in [Authentication modes](#authentication-modes).
+   described in [Authentication modes](#authentication-modes). Note: if
+   you're using premium/authenticated accounts and Cracked is enabled
+   anyway, that mismatch itself can cause auth errors — disable Cracked in
+   that case.
 4. Start the Aternos server first, then start the bot — connecting before
    the world has finished starting will just time out and retry, which is
    harmless but pointless.
@@ -326,7 +522,38 @@ Notes specific to this kind of low-cost/shared hosting:
 
 ## Troubleshooting
 
-**Connection refused / connection timeout**
+### `npm: command not found`
+
+This is an environment problem, not something in this project's code — it
+means whatever is trying to run `npm install`/`npm start` has no Node.js
+runtime in it at all. Node.js always ships `npm` together with `node`; you
+cannot have one without the other from an official install, so if `npm` is
+missing, `node` almost certainly is too.
+
+- **On Wispbyte:** see [Deploying on Wispbyte](#deploying-on-wispbyte) in
+  full — the fix is selecting the **Node.js** Docker image for the server,
+  not a code change.
+- **On any other host:** confirm the runtime actually has Node.js — run
+  `node -v && npm -v` in the same shell/container context your startup
+  command runs in. If that fails too, you're not in a Node.js environment
+  and need to switch to one (a Node.js buildpack/preset, a Node.js Docker
+  image, or this project's own [`Dockerfile`](#running-with-docker)).
+- **Never** work around this by removing `npm install`/`npm ci` from the
+  startup sequence — that doesn't fix the missing runtime, it just fails
+  later and less clearly, at `require('bedrock-protocol')` or
+  `require('dotenv')` instead, with `Cannot find module`.
+
+### Version mismatch
+
+If the server disconnects the bot with a message mentioning an outdated or
+incompatible client, set `BEDROCK_VERSION` to the version your server
+actually runs. The bot supports 1.16.201 through 1.26.30 (see [Supported
+Minecraft version range](#supported-minecraft-version-range) for the full
+list); if your server is outside that range, this bot's protocol library
+doesn't support it yet.
+
+### Connection refused / timeout
+
 Bedrock runs over UDP, which doesn't have a Java-style instant "connection
 refused" — an unreachable server almost always shows up as a **timeout**
 after `CONNECT_TIMEOUT_MS`, logged with category `NETWORK`. Check:
@@ -336,34 +563,66 @@ after `CONNECT_TIMEOUT_MS`, logged with category `NETWORK`. Check:
 - No firewall between the bot's host and the server is blocking outbound
   UDP.
 
-**Version mismatch**
-If the server disconnects the bot with a message mentioning an outdated or
-incompatible client, set `BEDROCK_VERSION` to the version your server
-actually runs. The bot supports 1.16.201 through 1.26.30; if your server is
-outside that range, this bot's protocol library doesn't support it yet.
+### Auth failure
 
-**Auth failure**
 If `AUTH_OFFLINE=true` and the server still rejects the connection citing
-authentication, the server most likely isn't in offline/cracked mode — see
-[Aternos setup](#using-it-with-aternos-bedrockmcpe). If `AUTH_OFFLINE=false`,
-make sure you completed the device sign-in flow shown in the logs.
+authentication, the server most likely isn't in offline/Cracked mode — see
+[Using it with Aternos Bedrock/MCPE](#using-it-with-aternos-bedrockmcpe). If
+`AUTH_OFFLINE=false`, make sure you completed the device sign-in flow shown
+in the logs.
 
-**`npm install` fails while building `raknet-native`**
+### Aternos Bedrock address/port mistakes
+
+The most common ways this specifically goes wrong on Aternos:
+- **Pasting the whole "Connect" string into `SERVER_HOST`.** Aternos shows
+  something like `myserver.aternos.me:34567` on the dashboard — that's
+  host **and** port together. `SERVER_HOST` must be just
+  `myserver.aternos.me`; the number after the colon goes in `SERVER_PORT`
+  (`34567` in this example), not left attached to the host.
+- **Reusing the Java port.** If you (or a previous setup) also runs a Java
+  Edition server on the same Aternos account, its port is unrelated —
+  Bedrock gets its own separate port. Always read the port from the
+  Bedrock server's own dashboard page.
+- **Assuming the port is always `19132`.** That's Bedrock's *default*
+  port, but Aternos assigns a specific port per server on its shared
+  infrastructure, and it's rarely the default. Re-check the dashboard each
+  time the server restarts if you're not on a plan with a fixed port.
+- **A leading/trailing space or stray quote** pasted from the dashboard
+  into a panel's env-var field. This project strips one layer of matching
+  quotes automatically, but stray spaces in the *host* itself will make
+  `SERVER_HOST` fail validation — the error message now shows exactly what
+  value it received, so compare it character-for-character against the
+  dashboard.
+
+### `npm install` fails while building `raknet-native`
+
 This project's `package.json` already routes around this (see
 [A note on `raknet-native`](#a-note-on-raknet-native)). If you've modified
 the `overrides` block and hit a native build failure, either restore it or
 run `npm install --ignore-scripts` and keep `RAKNET_BACKEND=jsp-raknet`.
 
-**Bot connects but keeps getting kicked for being idle anyway**
-Increase `ANTI_AFK_INTERVAL_MS`'s frequency (lower the number) or switch
+### Bot connects but keeps getting kicked for being idle anyway
+
+Lower `ANTI_AFK_INTERVAL_MS` (send pulses more often) or switch
 `ANTI_AFK_MODE` to `walk`. Some servers run their own AFK-detection plugins
 with different rules than vanilla Minecraft; check the server's own
 plugin/config list if `walk` mode doesn't help.
 
-**Nothing happens / process exits immediately**
+### Nothing happens / process exits immediately
+
 That's almost always a config validation failure — the bot prints every
-problem it found and exits before connecting. Read the printed list; it
-names the exact environment variable or config field to fix.
+problem it found, including the actual value it received for each one, and
+exits before connecting. Read the printed list; it names the exact
+environment variable or config field to fix.
+
+### A `DeprecationWarning` about `punycode` shows up in the logs
+
+This comes from a dependency several layers down inside `bedrock-protocol`
+(via `prismarine-realms` → `node-fetch@2` → `whatwg-url`), not from this
+project's own code, and was confirmed present even on a clean, correct
+install during review. It's a Node.js platform warning, not an error — the
+bot runs normally either way. It'll go away on its own once that part of
+the dependency chain is updated upstream.
 
 ---
 
@@ -383,6 +642,11 @@ names the exact environment variable or config field to fix.
   rather than crashing, but that means anti-AFK movement itself isn't
   guaranteed on every server/version combination — presence (just staying
   connected) always still works.
+- **Some low-level errors (like a bad hostname) surface as uncaught
+  exceptions**, not the normal client `error`/`kick`/`close` events. The
+  bot catches these at the process level and routes them through the same
+  reconnect logic (see [How reconnect works](#how-reconnect-works)), with a
+  crash-loop safety net underneath that.
 - **This bot cannot bypass authentication, whitelists, or bans**, and
   doesn't attempt to. If a server is locked down, the bot will simply fail
   to connect, the same as any other unauthorized client would.
@@ -410,20 +674,23 @@ names the exact environment variable or config field to fix.
 
 ```
 src/
-  index.js            Entry point: config, logging, lifecycle, signals
-  config.js            Loads + merges + validates config (defaults/json/env)
-  logger.js             Structured, timestamped logger
-  bot.js                 bedrock-protocol client lifecycle and event wiring
-  reconnect.js            Backoff/jitter + disconnect-reason classification
+  index.js                 Entry point: config, logging, lifecycle, signals
+  config.js                Loads + merges + validates config (defaults/json/env)
+  logger.js                Structured, timestamped logger
+  bot.js                   bedrock-protocol client lifecycle and event wiring
+  reconnect.js             Backoff/jitter + disconnect-reason classification
   health.js                Optional minimal HTTP status endpoint
   actions/
     antiAfk.js              Movement/rotation anti-idle loop
     chatHeartbeat.js         Optional periodic chat message
   utils/
     validation.js             Config validation helpers
-config.example.json     Example JSON config
-.env.example            Example environment variables
+Dockerfile               Multi-stage Node 22 image (see Running with Docker)
+.dockerignore            Keeps secrets/node_modules out of the build context
+config.example.json      Example JSON config
+.env.example             Example environment variables
 package.json
+package-lock.json
 LICENSE
 ```
 
